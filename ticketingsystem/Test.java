@@ -1,15 +1,3 @@
-// package ticketingsystem;
-
-// public class Test {
-
-// 	public static void main(String[] args) throws InterruptedException {
-        
-// 		final TicketingDS tds = new TicketingDS(routenum, coachnum, seatnum, stationnum, threadnum);
-
-// 		//ToDo
-	    
-// 	}
-// }
 package ticketingsystem;
 import java.math.BigDecimal;
 import java.util.ArrayList;
