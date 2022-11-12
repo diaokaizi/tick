@@ -17,10 +17,13 @@ public class Replay{
 /**********Manually Modified ***********/
   static boolean isPosttime = true;
   static boolean detail = false;
-  final static int routenum = 3;
-  final static int coachnum = 3;
-  final static int seatnum = 3;
-  final static int stationnum = 3;
+  static int routenum = 3;
+  static int coachnum = 3;
+  static int seatnum = 3;
+  static int stationnum = 3;
+  static int refRatio;
+  static int buyRatio;
+  static int inqRatio;
   
   static int debugMode = 1;
 
@@ -86,6 +89,39 @@ public class Replay{
 	historyList.add(tl);
 	linescanner.close();
 	return true;
+  }
+
+  private static boolean readConfig(String filename) {
+	try {
+	  Scanner scanner = new Scanner(new File(filename));
+
+	  while (scanner.hasNextLine()) {
+			String line = scanner.nextLine();
+			//System.out.println(line);
+			Scanner linescanner = new Scanner(line);
+			if (line.equals("")) {
+				linescanner.close();
+				continue;
+			}
+			if (line.substring(0,1).equals("#")) {
+				linescanner.close();
+				continue;
+			}
+			routenum = linescanner.nextInt();
+			coachnum = linescanner.nextInt();
+			seatnum = linescanner.nextInt();
+			stationnum = linescanner.nextInt();
+			refRatio = linescanner.nextInt();
+			buyRatio = linescanner.nextInt();
+			inqRatio = linescanner.nextInt();
+			System.out.println("route: " + routenum + ", coach: " + coachnum + ", seatnum: " + seatnum + ", station: " + stationnum + ", refundRatio: " + refRatio + ", buyRatio: " + buyRatio + ", inquiryRatio: " + inqRatio);
+			linescanner.close();
+	  }
+	  scanner.close();
+	}catch (FileNotFoundException e) {
+	  System.out.println(e);
+	}
+		return true;
   }
 
   private static void initialization(){
@@ -231,6 +267,7 @@ public class Replay{
 	  return;
 	}
 	String ft = args[3];
+	readConfig("TrainConfig");
 	long startMs, endMs;
 	readHistory(history, fileName);
 	initialization();
