@@ -1,19 +1,17 @@
 package ticketingsystem;
 
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
-public class TicketingDS implements TicketingSystem {
+public class NaiveTicketSystem implements TicketingSystem {
     private final int routeNum, coachNum, seatNumPerCoach, stationNum, threadNum, routeCapacity;
-
     private final ConcurrentHashMap<Long, Ticket>[] soldTickets;
-    private final ConcurrentInterval[][] seatStatus;
-    private final AtomicLong[] ticketIdCounter;
-    private final Random random;
+    private final ReentrantLock lock;
+    private final boolean[][][] seatStatus;
+    private final AtomicLong idCount;
 
-    public TicketingDS(int routeNum, int coachNum, int seatNumPerCoach, int stationNum, int threadNum) {
+    public NaiveTicketSystem(int routeNum, int coachNum, int seatNumPerCoach, int stationNum, int threadNum) {
         // Verify parameters
         if (routeNum <= 0 || coachNum <= 0 || seatNumPerCoach <= 0 || stationNum <= 0 || threadNum <= 0) {
             throw new RuntimeException("Invalid parameter for TicketingDS");
@@ -27,26 +25,14 @@ public class TicketingDS implements TicketingSystem {
         this.threadNum = threadNum;
         this.routeCapacity = coachNum * seatNumPerCoach;
 
-        // Init internal members
         this.soldTickets = new ConcurrentHashMap[routeNum + 1];
         for (int i = 0; i <= routeNum; ++i) {
             this.soldTickets[i] = new ConcurrentHashMap<>();
         }
+        lock = new ReentrantLock();
 
-        ticketIdCounter = new AtomicLong[routeNum + 1];
-        for (int r = 1; r <= routeNum; ++r) {
-            ticketIdCounter[r] = new AtomicLong(r);
-        }
-
-        random = new Random();
-
-        seatStatus = new ConcurrentInterval[routeNum + 1][];
-        for (int r = 1; r <= routeNum; ++r) {
-            seatStatus[r] = new ConcurrentInterval[routeCapacity];
-            for (int s = 0; s < routeCapacity; ++s) {
-                seatStatus[r][s] = new ConcurrentInterval(stationNum + 1);
-            }
-        }
+        seatStatus = new boolean[routeNum + 1][routeCapacity][stationNum + 1];
+        idCount = new AtomicLong(0);
     }
 
     private boolean invalidParameter(int route, int departure, int arrival) {
@@ -61,54 +47,78 @@ public class TicketingDS implements TicketingSystem {
         if (invalidParameter(route, departure, arrival)) {
             throw new RuntimeException("Invalid purchase parameter!");
         }
+        lock.lock();
+        Ticket ticket = null;
         for (int s = 0; s < routeCapacity; ++s) {
-            if (seatStatus[route][s].tryReserve(departure, arrival)) {
-                long tid = ticketIdCounter[route].getAndAdd(routeNum);
+            boolean allFree = true;
+            for (int i = departure; i < arrival; ++i) {
+                if (seatStatus[route][s][i]) {
+                    allFree = false;
+                    break;
+                }
+            }
+            if (allFree) {
+                for (int i = departure; i < arrival; ++i) {
+                    seatStatus[route][s][i] = true;
+                }
                 int coachId = 1 + s / seatNumPerCoach;
                 int seatId = 1 + s % seatNumPerCoach;
-                Ticket ticket = TicketUtility.createTicket(tid, passenger, route, coachId, seatId, departure, arrival);
+                long tid = idCount.getAndIncrement();
+                ticket = TicketUtility.createTicket(tid, passenger, route, coachId, seatId, departure, arrival);
                 soldTickets[route].put(tid, ticket);
-                return ticket;
+                break;
             }
         }
-        return null;
+        lock.unlock();
+        return ticket;
     }
 
     @Override
     public int inquiry(int route, int departure, int arrival) {
-        // Verify parameter
         if (invalidParameter(route, departure, arrival)) {
-            throw new RuntimeException("Invalid inquiry parameter!");
+            throw new RuntimeException("Invalid purchase parameter!");
         }
+        lock.lock();
         int remain = 0;
         for (int s = 0; s < routeCapacity; ++s) {
-            if (seatStatus[route][s].isAvailable(departure, arrival)) {
+            boolean allFree = true;
+            for (int i = departure; i < arrival; ++i) {
+                if (seatStatus[route][s][i]) {
+                    allFree = false;
+                    break;
+                }
+            }
+            if (allFree) {
                 remain++;
             }
         }
+        lock.unlock();
         return remain;
     }
 
     @Override
     public boolean refundTicket(Ticket ticket) {
-        if (ticket == null || invalidParameter(ticket.route, ticket.departure, ticket.arrival)) {
-            throw new RuntimeException("Invalid refund parameter!");
+        if (invalidParameter(ticket.route, ticket.departure, ticket.arrival)) {
+            throw new RuntimeException("Invalid purchase parameter!");
         }
         if (soldTickets[ticket.route].containsKey(ticket.tid)) {
-            Ticket soldTicket = soldTickets[ticket.route].get(ticket.tid);
-            if (soldTicket == null) {
-                // Someone has already refunded!
-                return false;
-            } else if (!TicketUtility.isSameTicket(ticket, soldTicket, true)) {
-                System.out.println("Not the same with already sold ticket!");
-                TicketUtility.printTicket(ticket);
-                TicketUtility.printTicket(soldTicket);
-            } else if (soldTickets[soldTicket.route].remove(soldTicket.tid) != null) {
-                int s = (soldTicket.coach - 1) * seatNumPerCoach + (soldTicket.seat - 1);
-                return seatStatus[soldTicket.route][s].tryFree(soldTicket.departure, soldTicket.arrival);
-            } else {
-                return false;
+            int s = (ticket.coach - 1) * seatNumPerCoach + (ticket.seat - 1);
+            lock.lock();
+            boolean allOccupied = true;
+            for (int i = ticket.departure; i < ticket.arrival; ++i) {
+                if (!seatStatus[ticket.route][s][i]) {
+                    allOccupied = false;
+                    break;
+                }
             }
+            if (allOccupied) {
+                for (int i = ticket.departure; i < ticket.arrival; ++i) {
+                    seatStatus[ticket.route][s][i] = false;
+                }
+                soldTickets[ticket.route].remove(ticket.tid);
+            }
+            lock.unlock();
+            return allOccupied;
         }
         return false;
     }
