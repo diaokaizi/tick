@@ -24,6 +24,7 @@ public class TicketingDS implements TicketingSystem {
 	//ToDo
 	public TicketingDS(int routeNum, int coachNum, int seatNum, int stationNum, int threadNum) {
 		tid.set(0);
+		Mask.setMask(stationNum);
 		this.routeNum = routeNum;
 		this.coachNum = coachNum;
 		this.seatNum = seatNum;
@@ -66,6 +67,7 @@ public class TicketingDS implements TicketingSystem {
 		// TODO Auto-generated method stub
 		if(ticket == null || tickets.get(ticket.tid) == null)
 			return false;
+		tickets.remove(ticket.tid);
 		this.trains[ticket.route - 1].refundTicket(ticket.coach - 1, ticket.seat - 1, ticket.departure - 1, ticket.arrival - 1);
 		return true;
 	}
